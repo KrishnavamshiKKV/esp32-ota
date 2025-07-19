@@ -1,1 +1,1 @@
-@ELEGANT EMBEDDED SOLUTIONS$
+@Reduces data usage: Fewer HTTP GET requests, useful if you're on limited or expensive mobile data$
