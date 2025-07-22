@@ -1,22 +1,20 @@
 # ====================================================================
 # --- CORE MODULES AND INITIALIZATION ---
 # ====================================================================
-from machine import UART  # 'reset' is removed from this import
+from machine import UART
 import utime
 import uos
-import sys              # Import the 'sys' module for rebooting
+import sys
 
 # Import all necessary libraries at the top
 try:
     import dataCall
     import request
-    import app_fota
+    # We are not using app_fota anymore in this version
 except Exception as e:
-    # Initialize UART here to ensure errors can be printed
     uart2_early = UART(UART.UART2, 9600, 8, 0, 1, 0)
     utime.sleep(1)
     uart2_early.write("FATAL: Import error: {}. Halting.\r\n".format(e))
-    # Stop execution if a critical library is missing
     while True:
         utime.sleep(1)
 
@@ -35,69 +33,73 @@ debug("BOOTING...")
 # ====================================================================
 # --- OTA UPDATE CONFIGURATION (ACTION REQUIRED) ---
 # ====================================================================
-# This is the version of this script.
-# When you create a new version, YOU MUST INCREMENT THIS NUMBER.
-CURRENT_VERSION = 1.1
+CURRENT_VERSION = 1.1  # Set this to 1.0 for the first deployment
 
-# The name of the script we want to update.
-TARGET_FILENAME = "main.py" 
+# --- FIX #1: Correct file path for QuecPython filesystem ---
+# The target file must be in the /usr directory.
+TARGET_FILENAME = "/usr/main.py" 
 
 # --- CORRECT GITHUB RAW URLs FOR YOUR REPOSITORY ---
 VERSION_URL = "https://raw.githubusercontent.com/KrishnavamshiKKV/esp32-ota/main/version.txt"
 SCRIPT_URL = "https://raw.githubusercontent.com/KrishnavamshiKKV/esp32-ota/main/main.py"
 
 # ====================================================================
-# --- NATIVE OTA UPDATE FUNCTION (Using app_fota) ---
+# --- OTA UPDATE FUNCTION (Manual Download Method) ---
 # ====================================================================
-def perform_native_ota_check():
+def perform_ota_check():
     """
-    Checks for a new script version and uses the built-in app_fota library.
+    Checks for a new script version and downloads it manually,
+    using the correct file path and a memory-safe streaming method.
     """
-    debug("@OTA_NATIVE: Starting Update Check$")
-    debug("@OTA_NATIVE: Current Version: {}$".format(CURRENT_VERSION))
+    debug("@OTA: Starting Update Check$")
+    debug("@OTA: Current Version: {}$".format(CURRENT_VERSION))
 
-    # Step 1: Check the version file
+    # Step 1: Fetch latest version info
     try:
         r = request.get(VERSION_URL, timeout=20)
-        if r.status_code != 200:
-            debug("@OTA_NATIVE: Failed to get version file. Status: {}$".format(r.status_code))
-            r.close()
-            return
-        
         response_builder = ""
         for chunk in r.text:
             response_builder += chunk
         latest_version = float(response_builder.strip())
+        r.close()
+        debug("@OTA: Server version is: {}$".format(latest_version))
+    except Exception as e:
+        debug("@OTA: ERROR getting version: {}$".format(e))
+        return
+
+    # Step 2: Compare with current version
+    if latest_version <= CURRENT_VERSION:
+        debug("@OTA: Script is up to date.$")
+        return
+
+    debug("@OTA: New version found! Downloading script...$")
+
+    # Step 3: Try downloading the new script
+    try:
+        r = request.get(SCRIPT_URL, timeout=120) # Longer timeout for bigger file
+        debug("@OTA: Script Download Status: {}$".format(r.status_code))
+
+        if r.status_code != 200:
+            debug("@OTA: Download failed. HTTP code: {}$".format(r.status_code))
+            r.close()
+            return
+
+        # --- FIX #2: Stream the file directly to flash to save RAM ---
+        # This is the memory-safe way to write the file.
+        debug("@OTA: Writing to file {}...$".format(TARGET_FILENAME))
+        with open(TARGET_FILENAME, "w") as f:
+            for chunk in r.text:
+                f.write(chunk)
+        # --- End of Fix #2 ---
         
         r.close()
-        debug("@OTA_NATIVE: Server version is: {}$".format(latest_version))
+
+        debug("@OTA: UPDATE SUCCESSFUL! Rebooting in 5 seconds...$")
+        utime.sleep(5)
+        sys.exit()
+
     except Exception as e:
-        debug("@OTA_NATIVE: ERROR - Could not get/parse version file: {}$".format(e))
-        return
-
-    # Step 2: Compare versions
-    if latest_version <= CURRENT_VERSION:
-        debug("@OTA_NATIVE: Script is up to date.$")
-        return
-
-    debug("@OTA_NATIVE: New version found! Starting download with app_fota...$")
-
-    # Step 3: Use the built-in app_fota library
-    try:
-        result = app_fota.update(SCRIPT_URL, TARGET_FILENAME)
-        if result == 0:
-            debug("@OTA_NATIVE: UPDATE SUCCESSFUL!$")
-            # Step 4: Reboot using the correct method
-            debug("@OTA_NATIVE: Rebooting in 5 seconds to apply update...$")
-            utime.sleep(5)
-            sys.exit()  # --- CORRECT REBOOT METHOD ---
-        else:
-            debug("@OTA_NATIVE: FAILED! app_fota.update() returned error code: {}$".format(result))
-            return
-            
-    except Exception as e:
-        debug("@OTA_NATIVE: FAILED! An exception occurred during app_fota: {}$".format(e))
-        return
+        debug("@OTA: FAILED during download/write: {}$".format(e))
 
 # ====================================================================
 # --- YOUR WORKING CODE ---
@@ -135,7 +137,7 @@ def check_server():
 
         r.close()
 
-        if current_response != last_response:
+        if current_response and current_response != last_response:
             last_response = current_response
             debug("New Firebase content found!")
             debug(current_response) 
@@ -150,8 +152,8 @@ def check_server():
 
 # Step 1: Connect to the network
 if activate_pdp():
-    # Step 2: Perform a one-time NATIVE OTA check on boot
-    perform_native_ota_check()
+    # Step 2: Perform a one-time OTA check on boot
+    perform_ota_check() # Using the corrected function
 
     # If the script continues, it means no update was performed.
     # Now, start your main application loop.
@@ -165,4 +167,4 @@ else:
     # If network fails, rebooting is the best option
     debug("@FATAL: Network failed. Rebooting in 30 seconds.$")
     utime.sleep(30)
-    sys.exit() # --- CORRECT REBOOT METHOD ---
+    sys.exit()
