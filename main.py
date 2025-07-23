@@ -33,7 +33,7 @@ debug("BOOTING...")
 # ====================================================================
 # --- OTA UPDATE CONFIGURATION (ACTION REQUIRED) ---
 # ====================================================================
-CURRENT_VERSION = 1.3  # Set this to 1.0 for the first deployment
+CURRENT_VERSION = 1.4  # Set this to 1.0 for the first deployment
 
 # --- FIX #1: Correct file path for QuecPython filesystem ---
 # The target file must be in the /usr directory.
@@ -166,7 +166,7 @@ if activate_pdp():
     # Now, start your main application loop.
     debug("@OTA check complete. Starting main application.$")
     
-    ota_check_interval_seconds = 3600  # 1 hour = 60 minutes * 60 seconds
+    ota_check_interval_seconds = 60  # 1 hour = 60 minutes * 60 seconds
     last_ota_check_time = utime.time() # Record the start time
     # --- END NEW SECTION ---
     
