@@ -33,7 +33,7 @@ debug("BOOTING...")
 # ====================================================================
 # --- OTA UPDATE CONFIGURATION (ACTION REQUIRED) ---
 # ====================================================================
-CURRENT_VERSION = 1.2  # Set this to 1.0 for the first deployment
+CURRENT_VERSION = 1.3  # Set this to 1.0 for the first deployment
 
 # --- FIX #1: Correct file path for QuecPython filesystem ---
 # The target file must be in the /usr directory.
@@ -166,9 +166,26 @@ if activate_pdp():
     # Now, start your main application loop.
     debug("@OTA check complete. Starting main application.$")
     
+    ota_check_interval_seconds = 3600  # 1 hour = 60 minutes * 60 seconds
+    last_ota_check_time = utime.time() # Record the start time
+    # --- END NEW SECTION ---
+    
     while True:
+        # 1. Run your primary task
         check_server()
-        debug("Version {}: Main Loop Running...".format(CURRENT_VERSION))
+
+        # --- NEW: Check if one hour has passed ---
+        if (utime.time() - last_ota_check_time) > ota_check_interval_seconds:
+            debug("--- It's time for the hourly OTA check ---")
+            # Reset the timer BEFORE running the check. This is important
+            # because the check function might reboot the device.
+            last_ota_check_time = utime.time()
+            
+            # Run the OTA check function
+            perform_ota_check()
+        # --- END NEW SECTION ---
+
+        # 2. Wait before the next loop
         utime.sleep(10)
 else:
     # If network fails, rebooting is the best option
