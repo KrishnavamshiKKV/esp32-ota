@@ -1,1 +1,0 @@
-@Cache Miss: Only after the TTL expires will the CDN go back to the source (GitHub) to fetch the fresh version of the file. The next time you ask for it, you will finally get the new content$
