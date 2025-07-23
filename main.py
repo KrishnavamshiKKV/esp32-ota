@@ -1,7 +1,7 @@
 # ====================================================================
 # --- CORE MODULES AND INITIALIZATION ---
 # ====================================================================
-from machine import UART
+from machine import UART, WDT 
 import utime
 import uos
 import sys
@@ -33,7 +33,7 @@ debug("BOOTING...")
 # ====================================================================
 # --- OTA UPDATE CONFIGURATION (ACTION REQUIRED) ---
 # ====================================================================
-CURRENT_VERSION = 1.1  # Set this to 1.0 for the first deployment
+CURRENT_VERSION = 1.2  # Set this to 1.0 for the first deployment
 
 # --- FIX #1: Correct file path for QuecPython filesystem ---
 # The target file must be in the /usr directory.
@@ -51,8 +51,8 @@ def perform_ota_check():
     Checks for a new script version and downloads it manually,
     using the correct file path and a memory-safe streaming method.
     """
-    debug("@OTA: Starting Update Check$")
-    debug("@OTA: Current Version: {}$".format(CURRENT_VERSION))
+    debug("OTA: Starting Update Check")
+    debug("OTA: Current Version: {}".format(CURRENT_VERSION))
 
     # Step 1: Fetch latest version info
     try:
@@ -62,14 +62,14 @@ def perform_ota_check():
             response_builder += chunk
         latest_version = float(response_builder.strip())
         r.close()
-        debug("@OTA: Server version is: {}$".format(latest_version))
+        debug("OTA: Server version is: {}".format(latest_version))
     except Exception as e:
-        debug("@OTA: ERROR getting version: {}$".format(e))
+        debug("OTA: ERROR getting version: {}".format(e))
         return
 
     # Step 2: Compare with current version
     if latest_version <= CURRENT_VERSION:
-        debug("@OTA: Script is up to date.$")
+        debug("OTA: Script is up to date.")
         return
 
     debug("@OTA: New version found! Downloading script...$")
@@ -77,16 +77,16 @@ def perform_ota_check():
     # Step 3: Try downloading the new script
     try:
         r = request.get(SCRIPT_URL, timeout=120) # Longer timeout for bigger file
-        debug("@OTA: Script Download Status: {}$".format(r.status_code))
+        debug("OTA: Script Download Status: {}".format(r.status_code))
 
         if r.status_code != 200:
-            debug("@OTA: Download failed. HTTP code: {}$".format(r.status_code))
+            debug("OTA: Download failed. HTTP code: {}".format(r.status_code))
             r.close()
             return
 
         # --- FIX #2: Stream the file directly to flash to save RAM ---
         # This is the memory-safe way to write the file.
-        debug("@OTA: Writing to file {}...$".format(TARGET_FILENAME))
+        debug("OTA: Writing to file {}...".format(TARGET_FILENAME))
         with open(TARGET_FILENAME, "w") as f:
             for chunk in r.text:
                 f.write(chunk)
@@ -94,9 +94,16 @@ def perform_ota_check():
         
         r.close()
 
-        debug("@OTA: UPDATE SUCCESSFUL! Rebooting in 5 seconds...$")
-        utime.sleep(5)
-        sys.exit()
+        #Using the Watchdog Timer for a reliable reboot ---
+        debug("@OTA: UPDATE SUCCESSFUL! Forcing hardware reboot with Watchdog in 20 seconds...$")
+        
+        # Start the watchdog with a 1-second timeout (1000 milliseconds)
+        wdt = WDT(timeout=1000)
+        
+        # Enter an infinite loop to intentionally "hang" the software.
+        while True:
+            pass  # Do nothing and wait for the watchdog to bite.
+        # --- End of Watchdog Reboot Fix ---
 
     except Exception as e:
         debug("@OTA: FAILED during download/write: {}$".format(e))
@@ -161,10 +168,13 @@ if activate_pdp():
     
     while True:
         check_server()
-        debug("OTA worked")
+        debug("Version {}: Main Loop Running...".format(CURRENT_VERSION))
         utime.sleep(10)
 else:
     # If network fails, rebooting is the best option
     debug("@FATAL: Network failed. Rebooting in 30 seconds.$")
-    utime.sleep(30)
-    sys.exit()
+    # Start the watchdog with a 1-second timeout (1000 milliseconds)
+    wdt = WDT(timeout=1000)
+    while True:
+        pass  # Do nothing and wait for the watchdog to bite.
+    # --- End of Watchdog Reboot Fix ---
